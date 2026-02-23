@@ -1,0 +1,84 @@
+#+title: Moonshot Dashboard
+#+description: My personal dashboard in Lua (and Nix) for a ESP-32 based 5-inch LCD display.
+#+title: Brad White [[https://dev.knightoffaith.systems]]
+#+repo: https://github.com/silent-brad/moonshot
+#+date: 2026-02-23
+
+* Building
+** Build and Flash
+#+begin_src sh
+nix develop
+
+# Build
+idf.py build
+
+# Flash (connect CrowPanel via USB)
+idf.py flash
+
+# Monitor serial output
+idf.py monitor
+#+end_src
+
+* Lua API Reference
+** Display Module
+#+begin_src lua
+display.init()                         -- Initialize display
+display.clear(color)                   -- Clear screen with color
+display.pixel(x, y, color)             -- Draw single pixel
+display.line(x0, y0, x1, y1, color)    -- Draw line
+display.rect(x, y, w, h, color, filled)-- Draw rectangle
+display.circle(cx, cy, r, color, filled) -- Draw circle
+display.triangle(x0,y0, x1,y1, x2,y2, color, filled) -- Draw triangle
+display.text(x, y, "text", color)      -- Draw text
+display.backlight(0-100)               -- Set backlight brightness
+display.rgb(r, g, b)                   -- Convert RGB888 to RGB565
+w, h = display.size()                  -- Get display dimensions
+
+-- Color constants
+display.BLACK, display.WHITE, display.RED, display.GREEN, display.BLUE
+display.YELLOW, display.CYAN, display.MAGENTA, display.ORANGE
+#+end_src
+
+** I2C Module
+#+begin_src lua
+i2c.init(port, sda, scl, freq)         -- Initialize I2C port
+i2c.write(port, addr, {data})          -- Write bytes to device
+data = i2c.read(port, addr, len)       -- Read bytes from device
+data = i2c.writeread(port, addr, {wr}, rd_len) -- Write then read
+devices = i2c.scan(port)               -- Scan for devices
+#+end_src
+
+** Example: Draw Graphics
+#+begin_src lua
+-- Initialize display
+display.init()
+display.clear(display.BLACK)
+
+-- Draw some shapes
+display.rect(10, 10, 100, 50, display.RED, true)
+display.circle(400, 240, 100, display.GREEN, false)
+display.line(0, 0, 799, 479, display.WHITE)
+
+-- Draw text
+display.text(300, 400, "Hello CrowPanel!", display.YELLOW)
+#+end_src
+
+** Example: I2C Scan
+#+begin_src lua
+-- Initialize I2C on CrowPanel touch pins
+i2c.init(1, 19, 20, 400000)
+
+-- Scan for devices
+devices = i2c.scan(1)
+for i, addr in ipairs(devices) do
+    print(string.format("Found device at 0x%02X", addr))
+end
+#+end_src
+
+* License
+MIT License
+
+* Acknowledgments
+- [[https://github.com/loboris/Lua-RTOS-ESP32-lobo][LoBo Lua-RTOS-ESP32]] for inspiration
+- [[https://www.elecrow.com/esp32-display-5-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html][Elecrow CrowPanel]] hardware
+- [[https://github.com/espressif/esp-idf][ESP-IDF]] framework
