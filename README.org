@@ -4,6 +4,8 @@
 #+repo: https://github.com/silent-brad/moonshot-dashboard
 #+date: 2026-02-23
 
+My personal dashboard in Lua (and Nix) for an ESP-32 based 5-inch LCD display.
+
 ** Build and Flash
 #+begin_src sh
 nix develop
