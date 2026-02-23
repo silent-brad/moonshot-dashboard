@@ -1,10 +1,9 @@
 #+title: Moonshot Dashboard
-#+description: My personal dashboard in Lua (and Nix) for a ESP-32 based 5-inch LCD display.
-#+title: Brad White [[https://dev.knightoffaith.systems]]
-#+repo: https://github.com/silent-brad/moonshot
+#+description: My personal dashboard in Lua (and Nix) for an ESP-32 based 5-inch LCD display.
+#+author: [[https://dev.knightoffaith.systems][Brad White]]
+#+repo: https://github.com/silent-brad/moonshot-dashboard
 #+date: 2026-02-23
 
-* Building
 ** Build and Flash
 #+begin_src sh
 nix develop
@@ -19,8 +18,8 @@ idf.py flash
 idf.py monitor
 #+end_src
 
-* Lua API Reference
-** Display Module
+** Lua API Reference
+*** Display Module
 #+begin_src lua
 display.init()                         -- Initialize display
 display.clear(color)                   -- Clear screen with color
@@ -39,7 +38,7 @@ display.BLACK, display.WHITE, display.RED, display.GREEN, display.BLUE
 display.YELLOW, display.CYAN, display.MAGENTA, display.ORANGE
 #+end_src
 
-** I2C Module
+*** I2C Module
 #+begin_src lua
 i2c.init(port, sda, scl, freq)         -- Initialize I2C port
 i2c.write(port, addr, {data})          -- Write bytes to device
@@ -48,7 +47,7 @@ data = i2c.writeread(port, addr, {wr}, rd_len) -- Write then read
 devices = i2c.scan(port)               -- Scan for devices
 #+end_src
 
-** Example: Draw Graphics
+*** Example: Draw Graphics
 #+begin_src lua
 -- Initialize display
 display.init()
@@ -63,7 +62,7 @@ display.line(0, 0, 799, 479, display.WHITE)
 display.text(300, 400, "Hello CrowPanel!", display.YELLOW)
 #+end_src
 
-** Example: I2C Scan
+*** Example: I2C Scan
 #+begin_src lua
 -- Initialize I2C on CrowPanel touch pins
 i2c.init(1, 19, 20, 400000)
@@ -75,10 +74,10 @@ for i, addr in ipairs(devices) do
 end
 #+end_src
 
-* License
+** License
 MIT License
 
-* Acknowledgments
+** Acknowledgments
 - [[https://github.com/loboris/Lua-RTOS-ESP32-lobo][LoBo Lua-RTOS-ESP32]] for inspiration
 - [[https://www.elecrow.com/esp32-display-5-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html][Elecrow CrowPanel]] hardware
 - [[https://github.com/espressif/esp-idf][ESP-IDF]] framework
