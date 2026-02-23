@@ -1,8 +1,8 @@
 --[[
-    Moonshot Display
+Moonshot Dashboard
 --]]
 
-local moonshot = { maxx = 800, maxy = 480, miny = 20 }
+moonshot = { maxx = 800, maxy = 480, miny = 20 }
 
 -- Initialize display
 function moonshot.init()
@@ -34,6 +34,7 @@ function moonshot.lineDemo(sec)
 		local y2 = math.random(moonshot.miny, moonshot.maxy - 1)
 		local color = math.random(0, 0xFFFF)
 		display.line(x1, y1, x2, y2, color)
+		sys.sleep(1)
 	end
 end
 
@@ -53,6 +54,7 @@ function moonshot.circleDemo(sec, dofill)
 		local color = math.random(0, 0xFFFF)
 		local filled = (dofill and dofill > 0)
 		display.circle(x, y, r, color, filled)
+		sys.sleep(1)
 	end
 end
 
@@ -73,6 +75,7 @@ function moonshot.rectDemo(sec, dofill)
 		local color = math.random(0, 0xFFFF)
 		local filled = (dofill and dofill > 0)
 		display.rect(x, y, w, h, color, filled)
+		sys.sleep(1)
 	end
 end
 
@@ -95,6 +98,7 @@ function moonshot.triangleDemo(sec, dofill)
 		local color = math.random(0, 0xFFFF)
 		local filled = (dofill and dofill > 0)
 		display.triangle(x1, y1, x2, y2, x3, y3, color, filled)
+		sys.sleep(1)
 	end
 end
 
@@ -110,6 +114,7 @@ function moonshot.pixelDemo(sec)
 			local color = math.random(0, 0xFFFF)
 			display.pixel(x, y, color)
 		end
+		sys.sleep(1)
 	end
 end
 
@@ -142,6 +147,7 @@ function moonshot.intro(sec)
 		end
 
 		display.line(0, y, moonshot.maxx - 1, y, display.rgb(r, g, b))
+		if y % 50 == 0 then sys.sleep(1) end
 	end
 
 	-- Draw centered text
@@ -155,9 +161,7 @@ function moonshot.intro(sec)
 	display.text(351, 321, "TFT Demo", display.YELLOW)
 
 	-- Wait
-	local start = os.time()
-	while os.time() - start < sec do
-	end
+	sys.sleep(sec * 1000)
 end
 
 -- Run full sequence
@@ -167,7 +171,7 @@ function moonshot.full(sec, rpt)
 
 	while rpt > 0 do
 		moonshot.intro(sec)
-		--moonshot.lineDemo(sec)
+		moonshot.lineDemo(sec)
 		--moonshot.circleDemo(sec, 0)
 		--moonshot.circleDemo(sec, 1)
 		--moonshot.rectDemo(sec, 0)

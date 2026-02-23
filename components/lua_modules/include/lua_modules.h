@@ -21,6 +21,7 @@ void lua_modules_init(lua_State *L);
 // Individual module open functions
 int luaopen_display(lua_State *L);
 int luaopen_i2c_module(lua_State *L);
+int luaopen_sys(lua_State *L);
 
 #ifdef __cplusplus
 }

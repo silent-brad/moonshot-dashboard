@@ -17,4 +17,8 @@ void lua_modules_init(lua_State *L)
     // Register I2C module
     luaL_requiref(L, "i2c", luaopen_i2c_module, 1);
     lua_pop(L, 1);
+    
+    // Register sys module
+    luaL_requiref(L, "sys", luaopen_sys, 1);
+    lua_pop(L, 1);
 }

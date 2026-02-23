@@ -1,6 +1,8 @@
 *
 build
-sdkconfig
+
+!sdkconfig
+!sdkconfig.old
 
 !.gitignore
 !LICENSE
