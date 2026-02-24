@@ -49,7 +49,7 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 static int lua_http_get(lua_State *L)
 {
     const char *url = luaL_checkstring(L, 1);
-    int timeout_ms = 10000;
+    int timeout_ms = 5000;  // 5 second default timeout
 
     if (lua_gettop(L) >= 2 && lua_isnumber(L, 2)) {
         timeout_ms = lua_tointeger(L, 2);

@@ -211,6 +211,9 @@ function dashboard.run()
 
 	dashboard.running = true
 
+	-- Show splash screen immediately so user sees something
+	dashboard.draw_splash()
+
 	local wifi_ok = dashboard.connect_wifi()
 
 	if wifi_ok then
@@ -237,7 +240,7 @@ function dashboard.draw_splash()
 		display.clear(display.BLACK)
 		display.text(300, 200, "MOONSHOT", display.CYAN)
 		display.text(280, 230, "Cyberpunk Dashboard", display.WHITE)
-		sys.sleep(2000)
+		display.text(280, 260, "Connecting...", display.YELLOW)
 		return
 	end
 
@@ -263,9 +266,7 @@ function dashboard.draw_splash()
 	display.text(cx - 90, cy, "CYBERPUNK DASHBOARD", t.accent_magenta)
 	display.text(cx - 55, cy + 30, "v1.0.0", t.text_secondary)
 
-	display.text(cx - 65, cy + 60, "Initializing...", t.accent_yellow)
-
-	sys.sleep(2000)
+	display.text(cx - 65, cy + 60, "Connecting...", t.accent_yellow)
 end
 
 function dashboard.stop()

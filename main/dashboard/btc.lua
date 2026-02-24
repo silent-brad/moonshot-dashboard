@@ -107,7 +107,7 @@ end
 function btc.draw_chart(x, y, w, h, theme)
 	x, y, w, h = math.floor(x), math.floor(y), math.floor(w), math.floor(h)
 	if #btc.price_history < 2 then
-		display.text(x, math.floor(y + h / 2 - 5), "Collecting data...", theme.text_secondary)
+		--display.text(x, math.floor(y + h / 2 - 5), "Collecting data...", theme.text_secondary)
 		return
 	end
 
