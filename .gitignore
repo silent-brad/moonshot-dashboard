@@ -12,7 +12,7 @@ build
 !flake.lock
 
 !config/
-!config/config.lua
+!config/*.lua
 !config/.env.example
 config/.env
 

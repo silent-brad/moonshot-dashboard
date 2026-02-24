@@ -10,5 +10,6 @@ idf_component_register(
         "dashboard/btc.lua"
         "dashboard/verse.lua"
         "../config/config.lua"
+        "getenv.lua"
         "../config/.env"
 )

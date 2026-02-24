@@ -70,18 +70,18 @@ function btc.draw(x, y, w, h, theme)
 	x, y, w, h = math.floor(x), math.floor(y), math.floor(w), math.floor(h)
 	local data = btc.data
 
-	display.text(x + 5, y + 5, "BTC", theme.accent_orange)
-	display.circle(x + 50, y + 10, 8, theme.accent_orange, false)
-	display.text(x + 46, y + 5, "B", theme.accent_orange)
+	display.text_font(x + 5, y + 5, "BTC", theme.accent_orange, display.FONT_GARAMOND_20)
+	display.circle(x + 60, y + 14, 8, theme.accent_orange, false)
+	display.text_font(x + 56, y + 5, "B", theme.accent_orange, display.FONT_INTER_20)
 
 	if not data then
-		display.text(x + 5, y + 35, "NO DATA", theme.text_secondary)
-		display.text(x + 5, y + 55, "Check connection", theme.accent_orange)
+		display.text_font(x + 5, y + 35, "NO DATA", theme.text_secondary, display.FONT_INTER_20)
+		display.text_font(x + 5, y + 60, "Check connection", theme.accent_orange, display.FONT_INTER_20)
 		return
 	end
 
 	local price_str = btc.format_price(data.price)
-	display.text(x + 5, y + 30, price_str, theme.accent_cyan)
+	display.text_font(x + 5, y + 35, price_str, theme.accent_cyan, display.FONT_INTER_20)
 
 	local change_color = theme.accent_cyan
 	local change_symbol = ""
@@ -94,14 +94,14 @@ function btc.draw(x, y, w, h, theme)
 	end
 
 	local change_str = string.format("%s%.2f%%", change_symbol, data.change_24h)
-	display.text(x + 5, y + 55, "24h:", theme.text_secondary)
-	display.text(x + 45, y + 55, change_str, change_color)
+	display.text_font(x + 5, y + 65, "24h:", theme.text_secondary, display.FONT_INTER_20)
+	display.text_font(x + 50, y + 65, change_str, change_color, display.FONT_INTER_20)
 
-	btc.draw_chart(x + 5, y + 80, w - 20, h - 110, theme)
+	btc.draw_chart(x + 5, y + 95, w - 20, h - 125, theme)
 
 	local age = os.time() - btc.last_update
 	local age_str = string.format("Updated: %ds ago", age)
-	display.text(x + 5, y + h - 20, age_str, theme.border)
+	display.text_font(x + 5, y + h - 25, age_str, theme.border, display.FONT_INTER_20)
 end
 
 function btc.draw_chart(x, y, w, h, theme)

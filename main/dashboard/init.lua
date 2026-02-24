@@ -57,7 +57,7 @@ function dashboard.draw_header(title)
 	display.text_font(title_x, 8, title, t.accent_cyan, display.FONT_GARAMOND_20)
 
 	local time_str = os.date("%H:%M")
-	display.text(cfg.width - 50, 8, time_str, t.text_secondary)
+	display.text_font(cfg.width - 60, 8, time_str, t.text_secondary, display.FONT_INTER_20)
 end
 
 function dashboard.draw_panel(panel, title, content_fn)
@@ -70,8 +70,8 @@ function dashboard.draw_panel(panel, title, content_fn)
 	display.line(p.x, p.y, p.x + p.w, p.y, t.accent_cyan)
 	display.line(p.x, p.y, p.x, p.y + p.h, t.accent_cyan)
 
-	display.rect(p.x + 5, p.y + 2, #title * 8 + 10, 18, t.bg_secondary, true)
-	display.text(p.x + 10, p.y + 5, title, t.accent_magenta)
+	display.rect(p.x + 5, p.y + 2, #title * 10 + 10, 22, t.bg_secondary, true)
+	display.text_font(p.x + 10, p.y + 5, title, t.accent_magenta, display.FONT_GARAMOND_20)
 
 	if content_fn then
 		content_fn(math.floor(p.x + 10), math.floor(p.y + 25), math.floor(p.w - 20), math.floor(p.h - 35))

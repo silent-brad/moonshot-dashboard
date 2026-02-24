@@ -122,7 +122,7 @@ function dashboard.draw()
 		if weather_mod then
 			weather_mod.draw(x, y, w, h, ui.theme)
 		else
-			display.text(x, y + 20, "Module not loaded", ui.theme.text_secondary)
+			display.text_font(x, y + 20, "Module not loaded", ui.theme.text_secondary, display.FONT_INTER_20)
 		end
 	end)
 
@@ -130,7 +130,7 @@ function dashboard.draw()
 		if btc_mod then
 			btc_mod.draw(x, y, w, h, ui.theme)
 		else
-			display.text(x, y + 20, "Module not loaded", ui.theme.text_secondary)
+			display.text_font(x, y + 20, "Module not loaded", ui.theme.text_secondary, display.FONT_INTER_20)
 		end
 	end)
 
@@ -138,7 +138,7 @@ function dashboard.draw()
 		if verse_mod then
 			verse_mod.draw(x, y, w, h, ui.theme)
 		else
-			display.text(x, y + 20, "Module not loaded", ui.theme.text_secondary)
+			display.text_font(x, y + 20, "Module not loaded", ui.theme.text_secondary, display.FONT_INTER_20)
 		end
 	end)
 
@@ -161,13 +161,13 @@ function dashboard.draw_status_bar()
 	if wifi then
 		if wifi.is_connected() then
 			wifi_status = "WiFi: OK"
-			display.text(5, y, wifi_status, display.rgb(0, 255, 100))
+			display.text_font(5, y, wifi_status, display.rgb(0, 255, 100), display.FONT_INTER_20)
 		else
 			wifi_status = "WiFi: X"
-			display.text(5, y, wifi_status, display.rgb(255, 80, 80))
+			display.text_font(5, y, wifi_status, display.rgb(255, 80, 80), display.FONT_INTER_20)
 		end
 	else
-		display.text(5, y, wifi_status, t.text_secondary)
+		display.text_font(5, y, wifi_status, t.text_secondary, display.FONT_INTER_20)
 	end
 
 	local next_refresh = dashboard.refresh_interval - (os.time() - dashboard.last_refresh)
@@ -175,11 +175,11 @@ function dashboard.draw_status_bar()
 		next_refresh = 0
 	end
 	local refresh_str = string.format("Next update: %ds", math.floor(next_refresh))
-	display.text(w - 150, y, refresh_str, t.text_secondary)
+	display.text_font(w - 180, y, refresh_str, t.text_secondary, display.FONT_INTER_20)
 
 	local mem = collectgarbage("count")
 	local mem_str = string.format("Mem: %.1fKB", mem)
-	display.text(math.floor(w / 2 - 40), y, mem_str, t.border)
+	display.text_font(math.floor(w / 2 - 50), y, mem_str, t.border, display.FONT_INTER_20)
 end
 
 function dashboard.init()
@@ -210,9 +210,6 @@ function dashboard.run()
 	end
 
 	dashboard.running = true
-
-	display.setfont(display.FONT_INTER_20)
-	display.getfont()
 
 	-- Show splash screen immediately so user sees something
 	dashboard.draw_splash()
@@ -267,9 +264,9 @@ function dashboard.draw_splash()
 
 	display.text_font(cx - 60, cy - 30, "MOONSHOT", t.accent_cyan, display.FONT_GARAMOND_20)
 	display.text_font(cx - 90, cy, "CYBERPUNK DASHBOARD", t.accent_magenta, display.FONT_GARAMOND_20)
-	display.text(cx - 55, cy + 30, "v1.0.0", t.text_secondary)
+	display.text_font(cx - 55, cy + 30, "v1.0.0", t.text_secondary, display.FONT_INTER_20)
 
-	display.text(cx - 65, cy + 60, "Connecting...", t.accent_yellow)
+	display.text_font(cx - 70, cy + 60, "Connecting...", t.accent_yellow, display.FONT_INTER_20)
 end
 
 function dashboard.stop()

@@ -36,6 +36,9 @@ extern const uint8_t dashboard_verse_lua_end[] asm("_binary_verse_lua_end");
 extern const uint8_t config_lua_start[] asm("_binary_config_lua_start");
 extern const uint8_t config_lua_end[] asm("_binary_config_lua_end");
 
+extern const uint8_t getenv_lua_start[] asm("_binary_getenv_lua_start");
+extern const uint8_t getenv_lua_end[] asm("_binary_getenv_lua_end");
+
 extern const uint8_t env_start[] asm("_binary__env_start");
 extern const uint8_t env_end[] asm("_binary__env_end");
 
@@ -124,6 +127,7 @@ void app_main(void)
         ESP_LOGI(TAG, "Loading config and modules...");
         
         register_embedded_string(L, "config.env", env_start, env_end);
+        register_embedded_module(L, "getenv", getenv_lua_start, getenv_lua_end);
         register_embedded_module(L, "config", config_lua_start, config_lua_end);
         
         register_embedded_module(L, "dashboard.init", 

@@ -36,14 +36,18 @@ verse.fallback_verses = {
 function verse.fetch()
 	local url = "https://labs.bible.org/api/?passage=votd&type=json&formatting=plain"
 
-	local ok, response = pcall(function()
-		return http.get(url)
-	end)
+	print("Verse: Fetching from " .. url)
 
-	if ok and response then
+	local response, err = http.get(url)
+
+	if response then
+		print("Verse: Got response: " .. string.sub(response, 1, 100))
+
 		verse.data = verse.parse(response)
 		verse.last_update = os.time()
 		return verse.data
+	else
+		print("Verse: HTTP error: " .. tostring(err))
 	end
 
 	verse.data = verse.get_fallback()
@@ -73,9 +77,10 @@ function verse.parse(json_str)
 		data.text = text
 	end
 
-	if #data.text == 0 then
+	--[[if #data.text == 0 then
 		return verse.get_fallback()
 	end
+  --]]
 
 	return data
 end
@@ -127,7 +132,7 @@ function verse.draw(x, y, w, h, theme)
 	display.line(cross_x + 5, cross_y, cross_x + 5, cross_y + 20, theme.accent_yellow)
 	display.line(cross_x, cross_y + 5, cross_x + 10, cross_y + 5, theme.accent_yellow)
 
-	display.text(x + 5, y + 5, data.ref, theme.accent_cyan)
+	display.text_font(x + 5, y + 5, data.ref, theme.accent_cyan, display.FONT_INTER_20)
 
 	local char_width = 8
 	local max_chars = math.floor((w - 20) / char_width)
@@ -138,13 +143,13 @@ function verse.draw(x, y, w, h, theme)
 
 	for i, line in ipairs(lines) do
 		if i > max_lines then
-			display.text(x + 5, y + 25 + (i - 1) * line_height, "...", theme.text_secondary)
+			display.text_font(x + 5, y + 25 + (i - 1) * line_height, "...", theme.text_secondary, display.FONT_INTER_20)
 			break
 		end
-		display.text(x + 5, y + 25 + (i - 1) * line_height, line, theme.text_primary)
+		display.text_font(x + 5, y + 25 + (i - 1) * line_height, line, theme.text_primary, display.FONT_INTER_20)
 	end
 
-	display.text(x + 5, y + h - 20, "- King James Version", theme.text_secondary)
+	display.text_font(x + 5, y + h - 20, "- King James Version", theme.text_secondary, display.FONT_GARAMOND_20)
 end
 
 return verse

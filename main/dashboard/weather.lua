@@ -108,29 +108,29 @@ function weather.draw(x, y, w, h, theme)
 	local data = weather.data
 
 	if not data then
-		display.text(x, y + 20, "NO DATA", theme.text_secondary)
-		display.text(x, y + 40, "Check WiFi/API", theme.accent_orange)
+		display.text_font(x, y + 20, "NO DATA", theme.text_secondary, display.FONT_INTER_20)
+		display.text_font(x, y + 45, "Check WiFi/API", theme.accent_orange, display.FONT_INTER_20)
 		return
 	end
 
 	local temp_str = string.format("%dF", data.temp)
-	display.text(x + 5, y + 10, temp_str, theme.accent_cyan)
+	display.text_font(x + 5, y + 10, temp_str, theme.accent_cyan, display.FONT_INTER_20)
 
-	display.text(x + 80, y + 10, data.city, theme.text_primary)
+	display.text_font(x + 80, y + 10, data.city, theme.text_primary, display.FONT_GARAMOND_20)
 
-	display.text(x + 5, y + 35, data.description, theme.text_secondary)
+	display.text_font(x + 5, y + 40, data.description, theme.text_secondary, display.FONT_INTER_20)
 
 	local feels_str = string.format("Feels: %dF", data.feels_like)
-	display.text(x + 5, y + 55, feels_str, theme.text_secondary)
+	display.text_font(x + 5, y + 65, feels_str, theme.text_secondary, display.FONT_INTER_20)
 
 	local humid_str = string.format("Humidity: %d%%", data.humidity)
-	display.text(x + 5, y + 75, humid_str, theme.text_secondary)
+	display.text_font(x + 5, y + 90, humid_str, theme.text_secondary, display.FONT_INTER_20)
 
 	weather.draw_icon(x + w - 60, y + 10, data.icon, theme)
 
 	local age = os.time() - weather.last_update
 	local age_str = string.format("Updated: %ds ago", age)
-	display.text(x + 5, y + h - 20, age_str, theme.border)
+	display.text_font(x + 5, y + h - 25, age_str, theme.border, display.FONT_INTER_20)
 end
 
 function weather.draw_icon(x, y, icon_type, theme)
@@ -160,7 +160,7 @@ function weather.draw_icon(x, y, icon_type, theme)
 		for i = 0, 5 do
 			local sx = x + 5 + (i % 3) * 15
 			local sy = y + 10 + math.floor(i / 3) * 20
-			display.text(sx, sy, "*", theme.text_primary)
+			display.text_font(sx, sy, "*", theme.text_primary, display.FONT_INTER_20)
 		end
 	elseif icon_type == "thunder" then
 		display.circle(x + 25, y + 12, 10, theme.text_secondary, true)
