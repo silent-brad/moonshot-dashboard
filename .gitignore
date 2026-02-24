@@ -11,6 +11,11 @@ build
 !flake.nix
 !flake.lock
 
+!config/
+!config/config.lua
+!config/.env.example
+config/.env
+
 !components/
 !components/**
 !CMakeLists.txt
@@ -18,6 +23,7 @@ build
 !main/
 !main/main.c
 !main/CMakeLists.txt
-!main/**.lua
+!main/dashboard/
+!main/dashboard/**.lua
 
 !partitions.csv

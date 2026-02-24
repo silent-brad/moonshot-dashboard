@@ -21,4 +21,12 @@ void lua_modules_init(lua_State *L)
     // Register sys module
     luaL_requiref(L, "sys", luaopen_sys, 1);
     lua_pop(L, 1);
+    
+    // Register WiFi module
+    luaL_requiref(L, "wifi", luaopen_wifi, 1);
+    lua_pop(L, 1);
+    
+    // Register HTTP module
+    luaL_requiref(L, "http", luaopen_http, 1);
+    lua_pop(L, 1);
 }

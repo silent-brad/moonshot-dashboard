@@ -46,7 +46,8 @@ static const char *TAG = "RGB_DISPLAY";
 #define PIN_BL      GPIO_NUM_2    // Backlight PWM
 
 // Timing parameters for CrowPanel 5-inch (800x480)
-#define PCLK_FREQ_HZ        (12 * 1000 * 1000)  // 12 MHz pixel clock
+// Values from official Elecrow LovyanGFX example
+#define PCLK_FREQ_HZ        (15 * 1000 * 1000)  // 15 MHz pixel clock
 #define HSYNC_BACK_PORCH    43
 #define HSYNC_FRONT_PORCH   8
 #define HSYNC_PULSE_WIDTH   4
@@ -98,7 +99,7 @@ esp_err_t rgb_display_init(void)
     };
     ESP_ERROR_CHECK(ledc_channel_config(&bl_channel));
 
-    // Configure RGB panel
+    // Configure RGB panel with bounce buffer for stable PSRAM reads
     esp_lcd_rgb_panel_config_t panel_config = {
         .clk_src = LCD_CLK_SRC_DEFAULT,
         .timings = {
@@ -120,6 +121,7 @@ esp_err_t rgb_display_init(void)
         },
         .data_width = 16,
         .num_fbs = 1,
+        .bounce_buffer_size_px = 4 * RGB_DISPLAY_WIDTH,  // 4 lines of bounce buffer in internal SRAM (reduced to save memory for TLS)
         .psram_trans_align = 64,
         .hsync_gpio_num = PIN_HSYNC,
         .vsync_gpio_num = PIN_VSYNC,
@@ -135,7 +137,8 @@ esp_err_t rgb_display_init(void)
             .fb_in_psram = true,
             .double_fb = false,
             .no_fb = false,
-            .bb_invalidate_cache = false,
+            .bb_invalidate_cache = true,
+            .refresh_on_demand = false,
         },
     };
 
