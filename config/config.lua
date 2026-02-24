@@ -13,13 +13,6 @@ config.wifi = {
 	password = get_env("WIFI_PASSWORD", "YOUR_WIFI_PASSWORD"),
 }
 
-config.weather = {
-	api_key = get_env("WEATHER_API_KEY", "YOUR_OPENWEATHERMAP_API_KEY"),
-	city = get_env("WEATHER_CITY", "New York"),
-	country = get_env("WEATHER_COUNTRY", "US"),
-	units = get_env("WEATHER_UNITS", "imperial"),
-}
-
 config.display = {
 	width = 800,
 	height = 480,
@@ -27,23 +20,40 @@ config.display = {
 	refresh_interval = tonumber(get_env("DISPLAY_REFRESH_INTERVAL", "300")),
 }
 
-config.theme = {
-	bg_primary = 0x0000,
-	bg_secondary = 0x0841,
-	accent_cyan = 0x07FF,
-	accent_magenta = 0xF81F,
-	accent_yellow = 0xFFE0,
-	accent_orange = 0xFD20,
-	text_primary = 0xFFFF,
-	text_secondary = 0xC618,
-	border = 0x4A69,
-	glow = 0x001F,
-}
+config.theme = "minimal"
+config.layout = "default"
 
 config.panels = {
 	weather = { x = 10, y = 40, w = 250, h = 200 },
 	btc = { x = 270, y = 40, w = 250, h = 200 },
 	verse = { x = 10, y = 250, w = 780, h = 220 },
 }
+
+-- Load plugins from config/plugins/ directory
+-- Each plugin file returns { enabled, slot, config }
+local plugin_files = {
+	"weather",
+	"btc",
+	"verse",
+	"todo",
+	"calendar",
+	"clock",
+	"system",
+}
+
+config.plugins = {}
+config.plugin_config = {}
+
+for _, name in ipairs(plugin_files) do
+	local ok, plugin_cfg = pcall(require, "config.plugins." .. name)
+	if ok and plugin_cfg.enabled then
+		table.insert(config.plugins, {
+			name = name,
+			slot = plugin_cfg.slot,
+			config = plugin_cfg.config,
+		})
+		config.plugin_config[name] = plugin_cfg.config
+	end
+end
 
 return config

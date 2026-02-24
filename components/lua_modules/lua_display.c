@@ -115,6 +115,18 @@ static int l_display_circle(lua_State *L)
     return 0;
 }
 
+// display.fill_circle(cx, cy, r, color)
+// Convenience function - draws a filled circle
+static int l_display_fill_circle(lua_State *L)
+{
+    int cx = luaL_checkinteger(L, 1);
+    int cy = luaL_checkinteger(L, 2);
+    int r = luaL_checkinteger(L, 3);
+    uint16_t color = (uint16_t)luaL_checkinteger(L, 4);
+    rgb_display_draw_circle(cx, cy, r, color, true);
+    return 0;
+}
+
 // display.triangle(x0, y0, x1, y1, x2, y2, color [, filled])
 static int l_display_triangle(lua_State *L)
 {
@@ -254,8 +266,9 @@ static const luaL_Reg display_lib[] = {
     {"hline",     l_display_hline},
     {"vline",     l_display_vline},
     {"rect",      l_display_rect},
-    {"circle",    l_display_circle},
-    {"triangle",  l_display_triangle},
+    {"circle",      l_display_circle},
+    {"fill_circle", l_display_fill_circle},
+    {"triangle",    l_display_triangle},
     {"text",      l_display_text},
     {"text_font", l_display_text_font},
     {"setfont",   l_display_setfont},

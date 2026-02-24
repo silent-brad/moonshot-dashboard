@@ -1,0 +1,1584 @@
+#+title: Moonshot Dashboard Architecture
+#+author: Brad White
+#+date: 2026-02-24
+
+* Overview
+
+This document outlines the architecture for the Moonshot Dashboard, a modular widget-based
+display system for ESP32-based LCD displays. Inspired by [[https://trmnl.com/][TRMNL]], but adapted for:
+
+- *Color LCD displays* (800×480 RGB565) instead of e-ink
+- *Lua-based components* instead of HTML/Liquid templates
+- *Local-first architecture* with optional cloud sync
+- *SQLite for persistent storage*
+
+** Design Philosophy
+
+| TRMNL                           | Moonshot                          |
+|---------------------------------+-----------------------------------|
+| E-ink (1-2 bit grayscale)       | Color LCD (RGB565, 16-bit)        |
+| HTML/CSS + Liquid templates     | Lua component library             |
+| Server-rendered PNG images      | Client-side Lua rendering         |
+| Cloud-first, device polls       | Local-first, optional cloud       |
+| Minimal refresh (saves battery) | Configurable refresh rate         |
+
+* Configuration System
+
+** Directory Structure
+
+#+begin_src text
+config/
+├── .env                    # Secrets (API keys, WiFi credentials) - gitignored
+├── .env.example            # Template for .env
+├── config.lua              # Main configuration module
+├── themes/
+│   ├── cyberpunk.lua       # Default theme
+│   ├── minimal.lua         # Clean, light theme
+│   └── retro.lua           # CRT-style theme
+└── layouts/
+    ├── default.lua         # Standard 3-panel layout
+    ├── focus.lua           # Single widget fullscreen
+    └── grid.lua            # 2x2 or 3x3 grid
+#+end_src
+
+** Configuration Schema
+
+#+begin_src lua
+-- config/config.lua
+return {
+    -- Display settings
+    display = {
+        width = 800,
+        height = 480,
+        orientation = "landscape",  -- "portrait" | "landscape"
+        backlight = 80,             -- 0-100
+        refresh_interval = 300,     -- seconds
+    },
+
+    -- Network
+    wifi = {
+        ssid = env("WIFI_SSID"),
+        password = env("WIFI_PASSWORD"),
+        retry_count = 5,
+        retry_delay = 2000,
+    },
+
+    -- Active theme
+    theme = "cyberpunk",
+
+    -- Active layout
+    layout = "default",
+
+    -- Enabled plugins (order matters for playlist)
+    plugins = {
+        { name = "weather", slot = "top_left", config = { units = "imperial" } },
+        { name = "btc",     slot = "top_right" },
+        { name = "verse",   slot = "bottom", config = { version = "KJV" } },
+    },
+
+    -- Plugin-specific settings (merged with defaults)
+    plugin_config = {
+        weather = {
+            api_key = env("WEATHER_API_KEY"),
+            city = "New York",
+            country = "US",
+        },
+        calendar = {
+            show_days = 7,
+        },
+    },
+
+    -- Database settings
+    database = {
+        enabled = true,
+        path = "/data/moonshot.db",
+        cache_ttl = 3600,  -- seconds
+    },
+}
+#+end_src
+
+** Theme Configuration
+
+#+begin_src lua
+-- config/themes/cyberpunk.lua
+return {
+    name = "cyberpunk",
+
+    colors = {
+        bg_primary     = 0x0000,   -- Black
+        bg_secondary   = 0x0841,   -- Dark blue-gray
+        bg_panel       = 0x1082,   -- Slightly lighter
+
+        accent_primary   = 0x07FF, -- Cyan
+        accent_secondary = 0xF81F, -- Magenta
+        accent_tertiary  = 0xFFE0, -- Yellow
+        accent_warning   = 0xFD20, -- Orange
+        accent_error     = 0xF800, -- Red
+        accent_success   = 0x07E0, -- Green
+
+        text_primary   = 0xFFFF,   -- White
+        text_secondary = 0xC618,   -- Light gray
+        text_muted     = 0x8410,   -- Dark gray
+
+        border         = 0x4A69,   -- Cyan-tinted gray
+        glow           = 0x001F,   -- Deep blue
+    },
+
+    fonts = {
+        heading = display.FONT_GARAMOND_24,
+        title   = display.FONT_GARAMOND_20,
+        body    = display.FONT_INTER_16,
+        small   = display.FONT_INTER_12,
+        mono    = display.FONT_MONO_12,
+    },
+
+    spacing = {
+        xs = 4,
+        sm = 8,
+        md = 16,
+        lg = 24,
+        xl = 32,
+    },
+
+    border_radius = 4,
+    panel_padding = 10,
+}
+#+end_src
+
+* Touchscreen Navigation
+
+The dashboard supports swipe gestures to navigate between screens, each displaying different widget configurations.
+
+** Screen Manager
+
+#+begin_src lua
+-- lua/screen_manager/init.lua
+local screen_manager = {}
+
+local screens = {}
+local current_screen = 1
+local transition_active = false
+local transition_offset = 0
+
+function screen_manager.init(screen_list)
+    screens = screen_list or {}
+    current_screen = 1
+end
+
+function screen_manager.add_screen(screen)
+    table.insert(screens, screen)
+end
+
+function screen_manager.get_current()
+    return screens[current_screen]
+end
+
+function screen_manager.get_screen_count()
+    return #screens
+end
+
+function screen_manager.get_current_index()
+    return current_screen
+end
+
+function screen_manager.go_to(index)
+    if index >= 1 and index <= #screens then
+        current_screen = index
+        return true
+    end
+    return false
+end
+
+function screen_manager.next()
+    if current_screen < #screens then
+        current_screen = current_screen + 1
+        return true
+    end
+    return false
+end
+
+function screen_manager.prev()
+    if current_screen > 1 then
+        current_screen = current_screen - 1
+        return true
+    end
+    return false
+end
+
+return screen_manager
+#+end_src
+
+** Swipe Gesture Detection
+
+#+begin_src lua
+-- lua/touch/swipe.lua
+local swipe = {}
+
+local config = {
+    min_distance = 50,      -- Minimum swipe distance in pixels
+    max_duration = 500,     -- Maximum swipe duration in ms
+    direction_threshold = 0.7,  -- Ratio for directional detection
+}
+
+local touch_start = nil
+
+function swipe.init(opts)
+    if opts then
+        for k, v in pairs(opts) do
+            config[k] = v
+        end
+    end
+end
+
+function swipe.on_touch_start(x, y)
+    touch_start = {
+        x = x,
+        y = y,
+        time = os.clock() * 1000,
+    }
+end
+
+function swipe.on_touch_end(x, y)
+    if not touch_start then return nil end
+
+    local dx = x - touch_start.x
+    local dy = y - touch_start.y
+    local duration = (os.clock() * 1000) - touch_start.time
+    local distance = math.sqrt(dx * dx + dy * dy)
+
+    touch_start = nil
+
+    if distance < config.min_distance then return nil end
+    if duration > config.max_duration then return nil end
+
+    local abs_dx = math.abs(dx)
+    local abs_dy = math.abs(dy)
+
+    -- Determine swipe direction
+    if abs_dx > abs_dy * config.direction_threshold then
+        return dx > 0 and "right" or "left"
+    elseif abs_dy > abs_dx * config.direction_threshold then
+        return dy > 0 and "down" or "up"
+    end
+
+    return nil
+end
+
+function swipe.get_velocity(x, y)
+    if not touch_start then return 0, 0 end
+    local duration = (os.clock() * 1000) - touch_start.time
+    if duration == 0 then return 0, 0 end
+    return (x - touch_start.x) / duration, (y - touch_start.y) / duration
+end
+
+return swipe
+#+end_src
+
+** Touch Event Handler
+
+#+begin_src lua
+-- lua/touch/handler.lua
+local swipe = require("touch.swipe")
+local screen_manager = require("screen_manager")
+
+local handler = {}
+
+function handler.init()
+    swipe.init({
+        min_distance = 80,
+        max_duration = 400,
+    })
+end
+
+function handler.process_touch(event_type, x, y)
+    if event_type == "start" then
+        swipe.on_touch_start(x, y)
+    elseif event_type == "end" then
+        local direction = swipe.on_touch_end(x, y)
+
+        if direction == "left" then
+            screen_manager.next()
+        elseif direction == "right" then
+            screen_manager.prev()
+        elseif direction == "up" then
+            -- Optional: scroll within widget or show overlay
+        elseif direction == "down" then
+            -- Optional: refresh current screen or show menu
+        end
+    end
+end
+
+return handler
+#+end_src
+
+** Screen Configuration
+
+#+begin_src lua
+-- config/screens.lua
+return {
+    {
+        name = "main",
+        layout = "default",
+        widgets = {
+            { name = "weather", slot = "top_left" },
+            { name = "btc",     slot = "top_right" },
+            { name = "verse",   slot = "bottom" },
+        },
+    },
+    {
+        name = "finance",
+        layout = "grid",
+        widgets = {
+            { name = "btc",     slot = "1" },
+            { name = "stocks",  slot = "2" },
+            { name = "markets", slot = "3" },
+            { name = "news",    slot = "4" },
+        },
+    },
+    {
+        name = "productivity",
+        layout = "default",
+        widgets = {
+            { name = "calendar", slot = "top_left" },
+            { name = "todo",     slot = "top_right" },
+            { name = "clock",    slot = "bottom" },
+        },
+    },
+    {
+        name = "system",
+        layout = "focus",
+        widgets = {
+            { name = "system", slot = "main" },
+        },
+    },
+}
+#+end_src
+
+** Screen Indicator Widget
+
+#+begin_src lua
+-- lua/ui/composite/screen_indicator.lua
+local ScreenIndicator = {}
+
+function ScreenIndicator.new(props)
+    return setmetatable({
+        total = props.total or 1,
+        current = props.current or 1,
+        dot_size = props.dot_size or 8,
+        dot_gap = props.dot_gap or 12,
+        position = props.position or "bottom",  -- bottom | top
+    }, { __index = ScreenIndicator })
+end
+
+function ScreenIndicator:measure(max_width, max_height)
+    local width = (self.dot_size * self.total) + (self.dot_gap * (self.total - 1))
+    return width, self.dot_size + 8
+end
+
+function ScreenIndicator:draw(theme)
+    local total_width = (self.dot_size * self.total) + (self.dot_gap * (self.total - 1))
+    local start_x = self.x + (self.width - total_width) / 2
+
+    for i = 1, self.total do
+        local dot_x = start_x + (i - 1) * (self.dot_size + self.dot_gap)
+        local color = i == self.current
+            and theme.colors.accent_primary
+            or theme.colors.text_muted
+
+        display.fill_circle(
+            math.floor(dot_x + self.dot_size / 2),
+            math.floor(self.y + self.dot_size / 2),
+            math.floor(self.dot_size / 2),
+            color
+        )
+    end
+end
+
+return ScreenIndicator
+#+end_src
+
+* Component Library
+
+Modeled after TRMNL's Framework UI, but implemented in Lua for direct rendering.
+
+** Directory Structure
+
+#+begin_src text
+components/
+├── lua_ui/
+│   ├── init.lua           # Component library loader
+│   ├── layout/
+│   │   ├── container.lua  # Root container with theme
+│   │   ├── row.lua        # Horizontal flex layout
+│   │   ├── column.lua     # Vertical flex layout
+│   │   ├── grid.lua       # CSS-grid-like layout
+│   │   └── spacer.lua     # Flexible spacing
+│   ├── display/
+│   │   ├── text.lua       # Text rendering with styles
+│   │   ├── heading.lua    # H1-H6 style headings
+│   │   ├── badge.lua      # Small labels/tags
+│   │   ├── divider.lua    # Horizontal/vertical lines
+│   │   └── icon.lua       # Bitmap icon rendering
+│   ├── data/
+│   │   ├── value.lua      # Large formatted values
+│   │   ├── progress.lua   # Progress bars
+│   │   ├── chart.lua      # Line/bar charts
+│   │   ├── table.lua      # Data tables
+│   │   └── list.lua       # Scrollable lists
+│   ├── feedback/
+│   │   ├── loading.lua    # Loading spinners/skeletons
+│   │   └── error.lua      # Error state display
+│   └── composite/
+│       ├── panel.lua      # Bordered panel with title
+│       ├── card.lua       # Content card
+│       ├── stat.lua       # Key-value statistic
+│       └── header.lua     # Screen header with clock
+#+end_src
+
+** Component API Design
+
+*** Base Component Pattern
+
+#+begin_src lua
+-- All components follow this pattern
+local Component = {}
+Component.__index = Component
+
+function Component.new(props)
+    local self = setmetatable({}, Component)
+    self.props = props or {}
+    self.x = 0
+    self.y = 0
+    self.width = 0
+    self.height = 0
+    return self
+end
+
+-- Calculate required size based on content
+function Component:measure(max_width, max_height)
+    return self.width, self.height
+end
+
+-- Position the component
+function Component:layout(x, y, width, height)
+    self.x = x
+    self.y = y
+    self.width = width
+    self.height = height
+end
+
+-- Render to display
+function Component:draw(theme)
+    -- Override in subclass
+end
+
+return Component
+#+end_src
+
+*** Layout Components
+
+#+begin_src lua
+-- lua/ui/layout/row.lua
+local Row = {}
+
+function Row.new(props)
+    return {
+        children = props.children or {},
+        gap = props.gap or 8,
+        align = props.align or "start",   -- start | center | end | stretch
+        justify = props.justify or "start", -- start | center | end | between | around
+    }
+end
+
+function Row:layout(x, y, w, h, theme)
+    local total_gap = self.gap * (#self.children - 1)
+    local available_width = w - total_gap
+    local child_widths = {}
+
+    -- First pass: measure children
+    for i, child in ipairs(self.children) do
+        local cw, ch = child:measure(available_width, h)
+        child_widths[i] = cw
+    end
+
+    -- Second pass: position children
+    local cx = x
+    for i, child in ipairs(self.children) do
+        local cy = y
+        local ch = h
+        if self.align == "center" then
+            cy = y + (h - child:measure(0, h)) / 2
+        end
+        child:layout(cx, cy, child_widths[i], ch)
+        cx = cx + child_widths[i] + self.gap
+    end
+end
+
+function Row:draw(theme)
+    for _, child in ipairs(self.children) do
+        child:draw(theme)
+    end
+end
+
+return Row
+#+end_src
+
+*** Display Components
+
+#+begin_src lua
+-- lua/ui/display/text.lua
+local Text = {}
+
+function Text.new(props)
+    return setmetatable({
+        content = props.content or props[1] or "",
+        color = props.color,           -- nil = use theme text_primary
+        font = props.font,             -- nil = use theme body font
+        align = props.align or "left", -- left | center | right
+        wrap = props.wrap or false,
+        max_lines = props.max_lines,
+    }, { __index = Text })
+end
+
+function Text:measure(max_width, max_height)
+    -- Approximate: 8px per character for default font
+    local char_width = 8
+    local line_height = 20
+    local text_width = #self.content * char_width
+
+    if self.wrap and text_width > max_width then
+        local lines = math.ceil(text_width / max_width)
+        if self.max_lines then
+            lines = math.min(lines, self.max_lines)
+        end
+        return max_width, lines * line_height
+    end
+
+    return math.min(text_width, max_width), line_height
+end
+
+function Text:draw(theme)
+    local color = self.color or theme.colors.text_primary
+    local font = self.font or theme.fonts.body
+
+    local text_x = self.x
+    if self.align == "center" then
+        local text_width = #self.content * 8
+        text_x = self.x + (self.width - text_width) / 2
+    elseif self.align == "right" then
+        local text_width = #self.content * 8
+        text_x = self.x + self.width - text_width
+    end
+
+    display.text_font(
+        math.floor(text_x),
+        math.floor(self.y),
+        self.content,
+        color,
+        font
+    )
+end
+
+return Text
+#+end_src
+
+*** Data Visualization Components
+
+#+begin_src lua
+-- lua/ui/data/value.lua
+-- Large formatted value display (like TRMNL's format_value)
+local Value = {}
+
+function Value.new(props)
+    return setmetatable({
+        value = props.value or 0,
+        prefix = props.prefix or "",     -- "$", "£", etc.
+        suffix = props.suffix or "",     -- "%", "°F", etc.
+        decimals = props.decimals or 0,
+        size = props.size or "large",    -- small | medium | large | xlarge
+        trend = props.trend,             -- nil | "up" | "down"
+        trend_value = props.trend_value,
+        color = props.color,
+    }, { __index = Value })
+end
+
+function Value:format()
+    local num = self.value
+    if type(num) == "number" then
+        if self.decimals > 0 then
+            num = string.format("%." .. self.decimals .. "f", num)
+        else
+            num = tostring(math.floor(num))
+        end
+        -- Add thousands separators
+        num = num:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    end
+    return self.prefix .. tostring(num) .. self.suffix
+end
+
+function Value:draw(theme)
+    local fonts = {
+        small = theme.fonts.body,
+        medium = theme.fonts.title,
+        large = theme.fonts.heading,
+        xlarge = theme.fonts.heading,  -- Could add FONT_GARAMOND_32
+    }
+
+    local color = self.color or theme.colors.text_primary
+    display.text_font(self.x, self.y, self:format(), color, fonts[self.size])
+
+    -- Draw trend indicator
+    if self.trend then
+        local trend_color = self.trend == "up"
+            and theme.colors.accent_success
+            or theme.colors.accent_error
+        local arrow = self.trend == "up" and "↑" or "↓"
+        local trend_str = arrow .. " " .. tostring(self.trend_value or "")
+        display.text_font(
+            self.x + self.width - 50,
+            self.y,
+            trend_str,
+            trend_color,
+            theme.fonts.small
+        )
+    end
+end
+
+return Value
+#+end_src
+
+#+begin_src lua
+-- lua/ui/data/chart.lua
+-- Simple line/bar chart for trends
+local Chart = {}
+
+function Chart.new(props)
+    return setmetatable({
+        data = props.data or {},         -- array of numbers
+        type = props.type or "line",     -- line | bar | area
+        color = props.color,
+        fill = props.fill or false,
+        show_grid = props.show_grid or true,
+        show_labels = props.show_labels or false,
+        min = props.min,                 -- nil = auto
+        max = props.max,                 -- nil = auto
+    }, { __index = Chart })
+end
+
+function Chart:draw(theme)
+    local data = self.data
+    if #data < 2 then return end
+
+    local color = self.color or theme.colors.accent_primary
+    local x, y, w, h = self.x, self.y, self.width, self.height
+
+    -- Calculate data range
+    local min_val = self.min or math.huge
+    local max_val = self.max or -math.huge
+    for _, v in ipairs(data) do
+        if v < min_val then min_val = v end
+        if v > max_val then max_val = v end
+    end
+    local range = max_val - min_val
+    if range == 0 then range = 1 end
+
+    -- Draw grid
+    if self.show_grid then
+        for i = 0, 4 do
+            local gy = y + (h * i / 4)
+            display.line(x, math.floor(gy), x + w, math.floor(gy), theme.colors.border)
+        end
+    end
+
+    -- Draw data
+    local step = w / (#data - 1)
+    local prev_px, prev_py
+
+    for i, v in ipairs(data) do
+        local px = x + (i - 1) * step
+        local py = y + h - ((v - min_val) / range * h)
+
+        if self.type == "line" and prev_px then
+            display.line(
+                math.floor(prev_px), math.floor(prev_py),
+                math.floor(px), math.floor(py),
+                color
+            )
+        elseif self.type == "bar" then
+            local bar_w = math.floor(step * 0.8)
+            local bar_h = math.floor((v - min_val) / range * h)
+            display.rect(
+                math.floor(px - bar_w/2),
+                math.floor(y + h - bar_h),
+                bar_w, bar_h,
+                color, true
+            )
+        end
+
+        prev_px, prev_py = px, py
+    end
+end
+
+return Chart
+#+end_src
+
+*** Composite Components
+
+#+begin_src lua
+-- lua/ui/composite/panel.lua
+-- Bordered panel with title (like current draw_panel)
+local Panel = {}
+
+function Panel.new(props)
+    return setmetatable({
+        title = props.title or "",
+        children = props.children or {},
+        style = props.style or "default", -- default | minimal | glow
+        padding = props.padding,
+    }, { __index = Panel })
+end
+
+function Panel:draw(theme)
+    local x, y, w, h = self.x, self.y, self.width, self.height
+    local padding = self.padding or theme.panel_padding
+
+    -- Background
+    display.rect(x, y, w, h, theme.colors.bg_panel, true)
+
+    -- Border based on style
+    if self.style == "glow" then
+        -- Outer glow effect
+        display.rect(x-1, y-1, w+2, h+2, theme.colors.glow, false)
+        display.rect(x, y, w, h, theme.colors.accent_primary, false)
+        display.line(x, y, x + w, y, theme.colors.accent_primary)
+        display.line(x, y, x, y + h, theme.colors.accent_primary)
+    elseif self.style == "minimal" then
+        display.line(x, y, x + w, y, theme.colors.border)
+    else
+        display.rect(x, y, w, h, theme.colors.border, false)
+    end
+
+    -- Title
+    if self.title ~= "" then
+        local title_bg_w = #self.title * 10 + 10
+        display.rect(x + 5, y - 2, title_bg_w, 20, theme.colors.bg_panel, true)
+        display.text_font(
+            x + 10, y + 2,
+            self.title,
+            theme.colors.accent_secondary,
+            theme.fonts.title
+        )
+    end
+
+    -- Layout and draw children
+    local content_x = x + padding
+    local content_y = y + (self.title ~= "" and 20 or 0) + padding
+    local content_w = w - padding * 2
+    local content_h = h - (self.title ~= "" and 20 or 0) - padding * 2
+
+    for _, child in ipairs(self.children) do
+        child:layout(content_x, content_y, content_w, content_h)
+        child:draw(theme)
+    end
+end
+
+return Panel
+#+end_src
+
+*** Component Library Loader
+
+#+begin_src lua
+-- lua/ui/init.lua
+local ui = {}
+
+-- Layout
+ui.Container = require("ui.layout.container")
+ui.Row       = require("ui.layout.row")
+ui.Column    = require("ui.layout.column")
+ui.Grid      = require("ui.layout.grid")
+ui.Spacer    = require("ui.layout.spacer")
+
+-- Display
+ui.Text      = require("ui.display.text")
+ui.Heading   = require("ui.display.heading")
+ui.Badge     = require("ui.display.badge")
+ui.Divider   = require("ui.display.divider")
+ui.Icon      = require("ui.display.icon")
+
+-- Data
+ui.Value     = require("ui.data.value")
+ui.Progress  = require("ui.data.progress")
+ui.Chart     = require("ui.data.chart")
+ui.Table     = require("ui.data.table")
+ui.List      = require("ui.data.list")
+
+-- Feedback
+ui.Loading   = require("ui.feedback.loading")
+ui.Error     = require("ui.feedback.error")
+
+-- Composite
+ui.Panel     = require("ui.composite.panel")
+ui.Card      = require("ui.composite.card")
+ui.Stat      = require("ui.composite.stat")
+ui.Header    = require("ui.composite.header")
+
+-- Utility functions
+function ui.rgb(r, g, b)
+    return display.rgb(r, g, b)
+end
+
+function ui.load_theme(name)
+    return require("config.themes." .. name)
+end
+
+return ui
+#+end_src
+
+* Plugin System
+
+** Directory Structure
+
+#+begin_src text
+plugins/
+├── init.lua              # Plugin loader and manager
+├── base.lua              # Base plugin class
+├── registry.lua          # Plugin registration/discovery
+├── builtin/
+│   ├── weather/
+│   │   ├── init.lua      # Plugin definition
+│   │   ├── api.lua       # Data fetching
+│   │   └── icons.lua     # Weather icons
+│   ├── btc/
+│   │   ├── init.lua
+│   │   └── api.lua
+│   ├── verse/
+│   │   └── init.lua
+│   ├── calendar/
+│   │   └── init.lua
+│   ├── clock/
+│   │   └── init.lua
+│   ├── system/
+│   │   └── init.lua      # Memory, WiFi, battery
+│   └── todo/
+│       └── init.lua
+└── custom/               # User plugins (gitignored or separate repo)
+    └── .gitkeep
+#+end_src
+
+** Plugin Base Class
+
+#+begin_src lua
+-- lua/plugins/base.lua
+local Plugin = {}
+Plugin.__index = Plugin
+
+function Plugin.new(spec)
+    local self = setmetatable({}, Plugin)
+
+    -- Required metadata
+    self.name = spec.name
+    self.version = spec.version or "1.0.0"
+    self.description = spec.description or ""
+    self.author = spec.author or "Anonymous"
+
+    -- Configuration schema
+    self.config_schema = spec.config_schema or {}
+    self.default_config = spec.default_config or {}
+
+    -- State
+    self.config = {}
+    self.data = nil
+    self.last_fetch = 0
+    self.fetch_interval = spec.fetch_interval or 300
+    self.error = nil
+
+    -- Callbacks (to be overridden)
+    self.on_init = spec.on_init or function() end
+    self.on_fetch = spec.on_fetch or function() return nil end
+    self.on_render = spec.on_render or function() end
+    self.on_destroy = spec.on_destroy or function() end
+
+    -- Supported sizes
+    self.sizes = spec.sizes or { "full", "half_v", "half_h", "quarter" }
+
+    return self
+end
+
+function Plugin:init(config)
+    self.config = {}
+    -- Merge default config with provided config
+    for k, v in pairs(self.default_config) do
+        self.config[k] = v
+    end
+    for k, v in pairs(config or {}) do
+        self.config[k] = v
+    end
+    self:on_init()
+end
+
+function Plugin:should_fetch()
+    return (os.time() - self.last_fetch) >= self.fetch_interval
+end
+
+function Plugin:fetch()
+    if not self:should_fetch() then
+        return self.data
+    end
+
+    local ok, result = pcall(self.on_fetch, self)
+    if ok then
+        self.data = result
+        self.last_fetch = os.time()
+        self.error = nil
+    else
+        self.error = result
+    end
+    return self.data
+end
+
+function Plugin:render(x, y, w, h, theme, size)
+    if self.error then
+        -- Render error state
+        display.text_font(x + 10, y + 20, "Error", theme.colors.accent_error, theme.fonts.body)
+        display.text_font(x + 10, y + 45, tostring(self.error):sub(1, 30), theme.colors.text_muted, theme.fonts.small)
+        return
+    end
+
+    self:on_render(x, y, w, h, theme, size)
+end
+
+function Plugin:destroy()
+    self:on_destroy()
+end
+
+-- Storage helpers (uses SQLite)
+function Plugin:store(key, value)
+    if db then
+        db.set(self.name .. ":" .. key, value)
+    end
+end
+
+function Plugin:retrieve(key)
+    if db then
+        return db.get(self.name .. ":" .. key)
+    end
+    return nil
+end
+
+return Plugin
+#+end_src
+
+** Example Plugin: Weather
+
+#+begin_src lua
+-- lua/plugins/builtin/weather/init.lua
+local Plugin = require("plugins.base")
+local ui = require("ui")
+local api = require("plugins.builtin.weather.api")
+local icons = require("plugins.builtin.weather.icons")
+
+return Plugin.new({
+    name = "weather",
+    version = "1.0.0",
+    description = "Current weather and forecast",
+    author = "Moonshot",
+
+    config_schema = {
+        api_key = { type = "string", required = true, secret = true },
+        city = { type = "string", required = true },
+        country = { type = "string", default = "US" },
+        units = { type = "enum", values = { "imperial", "metric" }, default = "imperial" },
+    },
+
+    default_config = {
+        units = "imperial",
+        country = "US",
+    },
+
+    fetch_interval = 600,  -- 10 minutes
+
+    sizes = { "full", "half_v", "half_h", "quarter" },
+
+    on_init = function(self)
+        -- Load cached data if available
+        local cached = self:retrieve("weather_data")
+        if cached then
+            self.data = cached
+        end
+    end,
+
+    on_fetch = function(self)
+        local data = api.fetch_current(
+            self.config.api_key,
+            self.config.city,
+            self.config.country,
+            self.config.units
+        )
+        if data then
+            self:store("weather_data", data)
+        end
+        return data
+    end,
+
+    on_render = function(self, x, y, w, h, theme, size)
+        local data = self.data
+
+        if not data then
+            display.text_font(x, y + 20, "Loading...", theme.colors.text_muted, theme.fonts.body)
+            return
+        end
+
+        if size == "quarter" then
+            -- Compact view
+            local temp_str = string.format("%d°", data.temp)
+            display.text_font(x, y, temp_str, theme.colors.accent_primary, theme.fonts.heading)
+            icons.draw(x + 60, y, data.condition, theme, "small")
+        else
+            -- Full view
+            local temp = ui.Value.new({
+                value = data.temp,
+                suffix = data.units == "imperial" and "°F" or "°C",
+                size = "large",
+            })
+            temp:layout(x, y, 100, 40)
+            temp:draw(theme)
+
+            display.text_font(x, y + 45, data.city, theme.colors.text_primary, theme.fonts.title)
+            display.text_font(x, y + 70, data.description, theme.colors.text_secondary, theme.fonts.body)
+
+            local feels_str = string.format("Feels: %d°", data.feels_like)
+            display.text_font(x, y + 95, feels_str, theme.colors.text_muted, theme.fonts.small)
+
+            local humid_str = string.format("Humidity: %d%%", data.humidity)
+            display.text_font(x, y + 115, humid_str, theme.colors.text_muted, theme.fonts.small)
+
+            icons.draw(x + w - 70, y, data.condition, theme, "large")
+        end
+    end,
+})
+#+end_src
+
+** Plugin Registry
+
+#+begin_src lua
+-- lua/plugins/registry.lua
+local registry = {
+    plugins = {},
+    loaded = {},
+}
+
+-- Discover and register all plugins
+function registry.discover()
+    -- Builtin plugins
+    local builtin = {
+        "weather", "btc", "verse", "calendar", "clock", "system", "todo"
+    }
+
+    for _, name in ipairs(builtin) do
+        local ok, plugin = pcall(require, "plugins.builtin." .. name)
+        if ok then
+            registry.register(plugin)
+        end
+    end
+
+    -- Custom plugins (scan directory)
+    -- TODO: Implement directory scanning for custom plugins
+end
+
+function registry.register(plugin)
+    if registry.plugins[plugin.name] then
+        print("Warning: Plugin '" .. plugin.name .. "' already registered")
+        return false
+    end
+    registry.plugins[plugin.name] = plugin
+    return true
+end
+
+function registry.get(name)
+    return registry.plugins[name]
+end
+
+function registry.list()
+    local names = {}
+    for name, _ in pairs(registry.plugins) do
+        table.insert(names, name)
+    end
+    table.sort(names)
+    return names
+end
+
+-- Instantiate a plugin with config
+function registry.load(name, config)
+    local plugin_def = registry.get(name)
+    if not plugin_def then
+        return nil, "Plugin not found: " .. name
+    end
+
+    -- Create a new instance
+    local instance = setmetatable({}, { __index = plugin_def })
+    instance:init(config)
+
+    registry.loaded[name] = instance
+    return instance
+end
+
+function registry.unload(name)
+    local instance = registry.loaded[name]
+    if instance then
+        instance:destroy()
+        registry.loaded[name] = nil
+    end
+end
+
+return registry
+#+end_src
+
+** Plugin Manager
+
+#+begin_src lua
+-- lua/plugins/init.lua
+local registry = require("plugins.registry")
+
+local manager = {}
+
+manager.active_plugins = {}
+
+function manager.init(config)
+    -- Discover available plugins
+    registry.discover()
+
+    -- Load plugins from config
+    for _, plugin_cfg in ipairs(config.plugins or {}) do
+        local name = plugin_cfg.name
+        local slot = plugin_cfg.slot
+        local cfg = plugin_cfg.config or {}
+
+        -- Merge with global plugin config
+        if config.plugin_config and config.plugin_config[name] then
+            for k, v in pairs(config.plugin_config[name]) do
+                if cfg[k] == nil then
+                    cfg[k] = v
+                end
+            end
+        end
+
+        local instance, err = registry.load(name, cfg)
+        if instance then
+            manager.active_plugins[slot] = {
+                plugin = instance,
+                name = name,
+                slot = slot,
+            }
+            print("Loaded plugin: " .. name .. " -> " .. slot)
+        else
+            print("Failed to load plugin: " .. name .. " - " .. (err or "unknown error"))
+        end
+    end
+end
+
+function manager.fetch_all()
+    for _, entry in pairs(manager.active_plugins) do
+        entry.plugin:fetch()
+    end
+end
+
+function manager.render_slot(slot, x, y, w, h, theme, size)
+    local entry = manager.active_plugins[slot]
+    if entry then
+        entry.plugin:render(x, y, w, h, theme, size)
+    end
+end
+
+function manager.get_plugin(slot_or_name)
+    -- Try by slot first
+    if manager.active_plugins[slot_or_name] then
+        return manager.active_plugins[slot_or_name].plugin
+    end
+    -- Try by name
+    for _, entry in pairs(manager.active_plugins) do
+        if entry.name == slot_or_name then
+            return entry.plugin
+        end
+    end
+    return nil
+end
+
+function manager.shutdown()
+    for slot, entry in pairs(manager.active_plugins) do
+        entry.plugin:destroy()
+    end
+    manager.active_plugins = {}
+end
+
+return manager
+#+end_src
+
+* SQLite Database for Local Storage
+
+** Feasibility Analysis
+
+*Yes, SQLite is feasible on ESP32* with some considerations:
+
+| Factor           | Assessment                                        |
+|------------------+---------------------------------------------------|
+| Memory           | Requires ~200KB+ RAM; ESP32-S3 has 512KB SRAM ✓   |
+| Storage          | Uses SPIFFS/LittleFS partition; ~1-4MB available  |
+| Library          | [[https://github.com/nickoala/esp-sqlite][esp-sqlite]] or custom port of [[https://www.sqlite.org/footprint.html][SQLite Amalgamation]]    |
+| Performance      | Slower than desktop; use WAL mode, minimize writes |
+| Complexity       | Moderate; requires C integration with Lua binding |
+
+*** Recommended Approach
+
+Use a *minimal SQLite build* with:
+- ~SQLITE_OMIT_DEPRECATED~
+- ~SQLITE_OMIT_LOAD_EXTENSION~
+- ~SQLITE_OMIT_TRACE~
+- ~SQLITE_THREADSAFE=0~ (single-threaded ESP32 Lua)
+
+Estimated footprint: *~350KB flash, ~50KB RAM minimum*
+
+** Database Schema
+
+#+begin_src sql
+-- Key-value store for plugin data
+CREATE TABLE IF NOT EXISTS kv_store (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    expires_at INTEGER,  -- Unix timestamp, NULL = never expires
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+);
+
+-- Cache for API responses
+CREATE TABLE IF NOT EXISTS api_cache (
+    url TEXT PRIMARY KEY,
+    response TEXT,
+    status_code INTEGER,
+    fetched_at INTEGER,
+    ttl INTEGER  -- Seconds until stale
+);
+
+-- Event log for debugging/analytics
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER DEFAULT (strftime('%s', 'now')),
+    type TEXT,      -- 'fetch', 'render', 'error', 'wifi', etc.
+    plugin TEXT,
+    message TEXT,
+    data TEXT       -- JSON blob
+);
+
+-- User preferences (synced from config but persisted)
+CREATE TABLE IF NOT EXISTS preferences (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_kv_expires ON kv_store(expires_at);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(type, timestamp);
+CREATE INDEX IF NOT EXISTS idx_cache_fetched ON api_cache(fetched_at);
+#+end_src
+
+** Lua Database Module
+
+#+begin_src lua
+-- lua/db/init.lua
+local db = {}
+
+local sqlite = nil  -- Will be set by C binding
+
+function db.init(path)
+    path = path or "/data/moonshot.db"
+    sqlite = sqlite_open(path)
+
+    if not sqlite then
+        return false, "Failed to open database"
+    end
+
+    -- Run migrations
+    db.migrate()
+
+    return true
+end
+
+function db.migrate()
+    local schema = [[
+        CREATE TABLE IF NOT EXISTS kv_store (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            expires_at INTEGER,
+            created_at INTEGER DEFAULT (strftime('%s', 'now')),
+            updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS api_cache (
+            url TEXT PRIMARY KEY,
+            response TEXT,
+            status_code INTEGER,
+            fetched_at INTEGER,
+            ttl INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER DEFAULT (strftime('%s', 'now')),
+            type TEXT,
+            plugin TEXT,
+            message TEXT,
+            data TEXT
+        );
+    ]]
+
+    sqlite_exec(sqlite, schema)
+end
+
+-- Key-Value Operations
+function db.set(key, value, ttl)
+    local expires_at = ttl and (os.time() + ttl) or nil
+    local val_str = type(value) == "table" and json.encode(value) or tostring(value)
+
+    sqlite_exec(sqlite, [[
+        INSERT OR REPLACE INTO kv_store (key, value, expires_at, updated_at)
+        VALUES (?, ?, ?, strftime('%s', 'now'))
+    ]], key, val_str, expires_at)
+end
+
+function db.get(key)
+    local row = sqlite_query_one(sqlite, [[
+        SELECT value, expires_at FROM kv_store WHERE key = ?
+    ]], key)
+
+    if not row then return nil end
+
+    -- Check expiration
+    if row.expires_at and row.expires_at < os.time() then
+        db.delete(key)
+        return nil
+    end
+
+    -- Try to decode as JSON
+    local ok, decoded = pcall(json.decode, row.value)
+    return ok and decoded or row.value
+end
+
+function db.delete(key)
+    sqlite_exec(sqlite, "DELETE FROM kv_store WHERE key = ?", key)
+end
+
+-- Cache Operations
+function db.cache_get(url)
+    local row = sqlite_query_one(sqlite, [[
+        SELECT response, fetched_at, ttl FROM api_cache WHERE url = ?
+    ]], url)
+
+    if not row then return nil end
+
+    -- Check if stale
+    if row.fetched_at + row.ttl < os.time() then
+        return nil, "stale"
+    end
+
+    return row.response
+end
+
+function db.cache_set(url, response, ttl)
+    ttl = ttl or 300
+    sqlite_exec(sqlite, [[
+        INSERT OR REPLACE INTO api_cache (url, response, fetched_at, ttl)
+        VALUES (?, ?, strftime('%s', 'now'), ?)
+    ]], url, response, ttl)
+end
+
+-- Event Logging
+function db.log(type, plugin, message, data)
+    local data_str = data and json.encode(data) or nil
+    sqlite_exec(sqlite, [[
+        INSERT INTO events (type, plugin, message, data)
+        VALUES (?, ?, ?, ?)
+    ]], type, plugin, message, data_str)
+
+    -- Prune old events (keep last 1000)
+    sqlite_exec(sqlite, [[
+        DELETE FROM events WHERE id NOT IN (
+            SELECT id FROM events ORDER BY timestamp DESC LIMIT 1000
+        )
+    ]])
+end
+
+-- Cleanup expired entries
+function db.cleanup()
+    sqlite_exec(sqlite, [[
+        DELETE FROM kv_store WHERE expires_at IS NOT NULL AND expires_at < strftime('%s', 'now')
+    ]])
+end
+
+function db.close()
+    if sqlite then
+        sqlite_close(sqlite)
+        sqlite = nil
+    end
+end
+
+return db
+#+end_src
+
+** Alternative: LittleFS JSON Store
+
+If SQLite proves too heavy, use a simpler JSON-file-based store:
+
+#+begin_src lua
+-- lua/store/init.lua
+-- Lightweight alternative to SQLite
+local store = {}
+local cache = {}
+local dirty = false
+
+function store.init(path)
+    store.path = path or "/data/store.json"
+    store.load()
+    return true
+end
+
+function store.load()
+    local f = io.open(store.path, "r")
+    if f then
+        local content = f:read("*a")
+        f:close()
+        local ok, data = pcall(json.decode, content)
+        if ok then
+            cache = data
+        end
+    end
+end
+
+function store.save()
+    if not dirty then return end
+    local f = io.open(store.path, "w")
+    if f then
+        f:write(json.encode(cache))
+        f:close()
+        dirty = false
+    end
+end
+
+function store.set(key, value)
+    cache[key] = value
+    dirty = true
+end
+
+function store.get(key)
+    return cache[key]
+end
+
+function store.delete(key)
+    cache[key] = nil
+    dirty = true
+end
+
+return store
+#+end_src
+
+* Directory Structure Summary
+
+#+begin_src text
+moonshot-dashboard/
+├── ARCHITECTURE.org         # This document
+├── README.org
+├── CMakeLists.txt
+├── flake.nix
+├── sdkconfig
+│
+├── config/
+│   ├── .env                 # Secrets (gitignored)
+│   ├── .env.example
+│   ├── config.lua           # Main configuration
+│   ├── screens.lua          # Screen definitions for swipe navigation
+│   ├── themes/
+│   │   ├── cyberpunk.lua
+│   │   ├── minimal.lua
+│   │   └── retro.lua
+│   └── layouts/
+│       ├── default.lua
+│       ├── focus.lua
+│       └── grid.lua
+│
+├── components/              # ESP-IDF C components only
+│   ├── lua_core/            # Lua interpreter integration
+│   ├── lua_modules/         # C modules exposed to Lua
+│   │   ├── lua_display.c    # Display bindings
+│   │   ├── lua_http.c       # HTTP client bindings
+│   │   ├── lua_wifi.c       # WiFi bindings
+│   │   ├── lua_sys.c        # System bindings
+│   │   └── lua_i2c.c        # I2C bindings
+│   └── rgb_display/         # Display driver
+│
+├── lua/                     # Pure Lua code (embedded at compile time)
+│   ├── moonshot.lua         # Module initializer
+│   ├── app.lua              # Application entry point
+│   ├── ui/                  # Component library
+│   │   ├── ui_init.lua      # UI loader (require as "ui")
+│   │   ├── ui_base.lua      # Base component (require as "ui.base")
+│   │   ├── layout/
+│   │   │   ├── container.lua
+│   │   │   ├── row.lua
+│   │   │   ├── column.lua
+│   │   │   ├── ui_grid.lua  # (require as "ui.layout.grid")
+│   │   │   └── spacer.lua
+│   │   ├── display/
+│   │   ├── data/
+│   │   ├── feedback/
+│   │   └── composite/
+│   ├── plugins/
+│   │   ├── plugins_init.lua # Plugin manager (require as "plugins")
+│   │   ├── plugin_base.lua  # Base plugin (require as "plugins.base")
+│   │   ├── registry.lua     # Plugin discovery
+│   │   ├── builtin/
+│   │   │   ├── weather/
+│   │   │   │   ├── weather.lua      # (require as "plugins.builtin.weather")
+│   │   │   │   ├── weather_api.lua  # (require as "plugins.builtin.weather.api")
+│   │   │   │   └── icons.lua
+│   │   │   ├── btc/
+│   │   │   │   ├── btc.lua
+│   │   │   │   └── btc_api.lua
+│   │   │   ├── verse/
+│   │   │   ├── calendar/
+│   │   │   ├── clock/
+│   │   │   ├── system/
+│   │   │   └── todo/
+│   │   └── custom/          # User plugins
+│   ├── screen_manager/
+│   │   └── screen_manager.lua  # (require as "screen_manager")
+│   ├── touch/               # Swipe gesture handling
+│   │   ├── swipe.lua
+│   │   └── handler.lua
+│   ├── db/
+│   │   └── db.lua           # (require as "db")
+│   └── store/
+│       └── store.lua        # (require as "store")
+│
+├── main/
+│   ├── main.c               # ESP-IDF entry point
+│   ├── dashboard/           # Legacy (to be migrated)
+│   └── getenv.lua
+│
+└── fonts/
+    └── *.ttf
+#+end_src
+
+* Migration Path
+
+1. *Phase 1*: ✓ Create ~lua/ui/~ with basic components (~Text~, ~Panel~, ~Value~)
+2. *Phase 2*: ✓ Create ~lua/plugins/~ structure, migrate existing ~weather.lua~, ~btc.lua~, ~verse.lua~
+3. *Phase 3*: ✓ Refactor ~config/~ to match new schema (themes, layouts, screens)
+4. *Phase 4*: ✓ Add SQLite or JSON store for caching
+5. *Phase 5*: ✓ Create additional plugins (calendar, todo, clock, system)
+6. *Phase 6*: ✓ Add theme, layout, and screen switching with touch navigation
+
+* References
+
+- [[https://trmnl.com/framework][TRMNL Framework UI]]
+- [[https://docs.trmnl.com/][TRMNL Documentation]]
+- [[https://github.com/usetrmnl/firmware][TRMNL Firmware (GPL-3)]]
+- [[https://www.sqlite.org/footprint.html][SQLite Footprint]]

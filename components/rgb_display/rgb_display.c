@@ -121,7 +121,7 @@ esp_err_t rgb_display_init(void)
         },
         .data_width = 16,
         .num_fbs = 1,
-        .bounce_buffer_size_px = 4 * RGB_DISPLAY_WIDTH,  // 4 lines of bounce buffer in internal SRAM (reduced to save memory for TLS)
+        .bounce_buffer_size_px = 2 * RGB_DISPLAY_WIDTH,  // 2 lines of bounce buffer in internal SRAM (reduced to save memory for WiFi)
         .psram_trans_align = 64,
         .hsync_gpio_num = PIN_HSYNC,
         .vsync_gpio_num = PIN_VSYNC,

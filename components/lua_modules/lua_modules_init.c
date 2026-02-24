@@ -29,4 +29,8 @@ void lua_modules_init(lua_State *L)
     // Register HTTP module
     luaL_requiref(L, "http", luaopen_http, 1);
     lua_pop(L, 1);
+    
+    // Register touch module
+    luaL_requiref(L, "touch", luaopen_touch, 1);
+    lua_pop(L, 1);
 }
