@@ -15,6 +15,7 @@
 #include "lauxlib.h"
 #include "lualib.h"
 #include "rgb_display.h"
+#include "fonts.h"
 
 // display.init()
 static int l_display_init(lua_State *L)
@@ -205,6 +206,44 @@ static int l_display_rgb(lua_State *L)
     return 1;
 }
 
+// display.setfont(font_id)
+// Font IDs: 0=default, 1=inter12, 2=inter16, 3=garamond20, 4=garamond28
+static int l_display_setfont(lua_State *L)
+{
+    int font_id = luaL_checkinteger(L, 1);
+    if (font_id < 0 || font_id >= FONT_COUNT) {
+        return luaL_error(L, "Invalid font ID: %d (valid: 0-%d)", font_id, FONT_COUNT - 1);
+    }
+    rgb_display_set_font((font_id_t)font_id);
+    return 0;
+}
+
+// display.getfont()
+// Returns current font ID
+static int l_display_getfont(lua_State *L)
+{
+    lua_pushinteger(L, rgb_display_get_font());
+    return 1;
+}
+
+// display.text_font(x, y, text, color, font_id)
+// Draw text with specified font
+static int l_display_text_font(lua_State *L)
+{
+    int x = luaL_checkinteger(L, 1);
+    int y = luaL_checkinteger(L, 2);
+    const char *text = luaL_checkstring(L, 3);
+    uint16_t color = (uint16_t)luaL_checkinteger(L, 4);
+    int font_id = luaL_optinteger(L, 5, FONT_DEFAULT);
+    
+    if (font_id < 0 || font_id >= FONT_COUNT) {
+        font_id = FONT_DEFAULT;
+    }
+    
+    rgb_display_draw_text_font(x, y, text, color, (font_id_t)font_id);
+    return 0;
+}
+
 // Module function table
 static const luaL_Reg display_lib[] = {
     {"init",      l_display_init},
@@ -218,6 +257,9 @@ static const luaL_Reg display_lib[] = {
     {"circle",    l_display_circle},
     {"triangle",  l_display_triangle},
     {"text",      l_display_text},
+    {"text_font", l_display_text_font},
+    {"setfont",   l_display_setfont},
+    {"getfont",   l_display_getfont},
     {"image",     l_display_image},
     {"backlight", l_display_backlight},
     {"size",      l_display_size},
@@ -248,6 +290,11 @@ int luaopen_display(lua_State *L)
     // Add display dimensions
     lua_pushinteger(L, RGB_DISPLAY_WIDTH);  lua_setfield(L, -2, "WIDTH");
     lua_pushinteger(L, RGB_DISPLAY_HEIGHT); lua_setfield(L, -2, "HEIGHT");
+    
+    // Add font constants
+    lua_pushinteger(L, FONT_DEFAULT);     lua_setfield(L, -2, "FONT_DEFAULT");
+    lua_pushinteger(L, FONT_INTER_20);    lua_setfield(L, -2, "FONT_INTER_20");
+    lua_pushinteger(L, FONT_GARAMOND_20); lua_setfield(L, -2, "FONT_GARAMOND_20");
     
     return 1;
 }

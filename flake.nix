@@ -36,6 +36,8 @@
             libusb1
             openssl
             dfu-util
+            luajit
+            freetype
           ];
 
           shellHook = ''
@@ -46,6 +48,7 @@
                 pkgs.libusb1
                 pkgs.zlib
                 pkgs.stdenv.cc.cc.lib
+                pkgs.freetype
               ]
             }:$LD_LIBRARY_PATH"
 

@@ -33,7 +33,10 @@ display.line(x0, y0, x1, y1, color)    -- Draw line
 display.rect(x, y, w, h, color, filled)-- Draw rectangle
 display.circle(cx, cy, r, color, filled) -- Draw circle
 display.triangle(x0,y0, x1,y1, x2,y2, color, filled) -- Draw triangle
-display.text(x, y, "text", color)      -- Draw text
+display.text(x, y, "text", color)      -- Draw text (default font)
+display.text_font(x, y, "text", color, font_id) -- Draw text with font
+display.setfont(font_id)               -- Set default font
+display.getfont()                      -- Get current font ID
 display.backlight(0-100)               -- Set backlight brightness
 display.rgb(r, g, b)                   -- Convert RGB888 to RGB565
 w, h = display.size()                  -- Get display dimensions
@@ -41,6 +44,13 @@ w, h = display.size()                  -- Get display dimensions
 -- Color constants
 display.BLACK, display.WHITE, display.RED, display.GREEN, display.BLUE
 display.YELLOW, display.CYAN, display.MAGENTA, display.ORANGE
+
+-- Font constants
+display.FONT_DEFAULT    -- Default font (Inter 12px)
+display.FONT_INTER_12   -- Inter 12px
+display.FONT_INTER_16   -- Inter 16px
+display.FONT_GARAMOND_16 -- EB Garamond 16px
+display.FONT_GARAMOND_24 -- EB Garamond 24px
 #+end_src
 
 *** I2C Module
@@ -78,6 +88,31 @@ for i, addr in ipairs(devices) do
     print(string.format("Found device at 0x%02X", addr))
 end
 #+end_src
+
+** Custom Font Generation
+Generate bitmap font data from TTF files using the included Lua script.
+
+*** Requirements
+- LuaJIT
+- FreeType library
+
+*** Usage
+#+begin_src sh
+# Download a font (e.g., EB Garamond)
+wget https://github.com/googlefonts/eb-garamond/raw/main/fonts/ttf/EBGaramond-Regular.ttf
+
+# Generate font C code
+luajit tools/generate_font.lua EBGaramond-Regular.ttf garamond 16 > components/rgb_display/font_garamond.c
+
+# For Inter font
+wget https://github.com/rsms/inter/raw/master/docs/font-files/Inter-Regular.otf
+luajit tools/generate_font.lua Inter-Regular.otf inter 12 > components/rgb_display/font_inter.c
+#+end_src
+
+The script outputs a complete C file with:
+- Bitmap data array (column-based format, 2 bytes per column)
+- Glyph descriptors (offset, width, height, advance)
+- Font struct definition
 
 ** License
 MIT License

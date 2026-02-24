@@ -54,7 +54,7 @@ function dashboard.draw_header(title)
 	display.line(0, cfg.header_height + 1, cfg.width, cfg.header_height + 1, t.glow)
 
 	local title_x = math.floor((cfg.width - #title * 8) / 2)
-	display.text(title_x, 8, title, t.accent_cyan)
+	display.text_font(title_x, 8, title, t.accent_cyan, display.FONT_GARAMOND_20)
 
 	local time_str = os.date("%H:%M")
 	display.text(cfg.width - 50, 8, time_str, t.text_secondary)

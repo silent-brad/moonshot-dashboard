@@ -16,6 +16,12 @@ build
 !config/.env.example
 config/.env
 
+!tools
+!tools/*.lua
+
+!fonts/
+!fonts/**
+
 !components/
 !components/**
 !CMakeLists.txt
